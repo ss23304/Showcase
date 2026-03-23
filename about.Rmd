@@ -1,0 +1,18 @@
+---
+title: "About Me"
+description: |
+  BSc Politics and International Relations student at the University of Essex
+output: distill::distill_article
+---
+## Capstone Project
+I am currently working on my dissertation, focussing on government effectiveness and political participation.
+
+## Previous Modules
+- GV110 - Thinking like a Social Scientist
+- GV207 - Quantitative Political Analysis
+- GV217 - Conflict Analysis
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+

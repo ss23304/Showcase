@@ -1,0 +1,232 @@
+---
+title: "Data Analysis & Visualisation"
+description: |
+  This page is a showcase of work completed for the GV300 Advanced Quantitative Political Analysis module.
+output: distill::distill_article
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+```{r, include=FALSE}
+library(stringr)
+library(readr)
+library(ggplot2)
+library(curl)
+library(tidyverse)
+kidiq <- read_csv("kidiq-2.csv")
+```
+
+# Data Organisation and Manipulation
+### Manipulating data to create categories for better analysis
+- Creating categories for the ordinal variables of mother's work status, mother's IQ, and mother's level of education. 
+- The level of education and work status are combined to create a new "advantage" variable.
+
+```{r, echo=TRUE}
+
+# Create meaningful categories
+kidiq <- kidiq %>%
+  mutate(
+    # Create work status labels
+    work_status = case_when(
+      mom_work == 1 ~ "Not working",
+      mom_work == 2 ~ "Part-time",
+      mom_work == 3 ~ "Full-time",
+      mom_work == 4 ~ "Full-time+"
+    ),
+    # Create combined advantage categories
+    family_advantage = case_when(
+      mom_hs == 0 & mom_work <= 2 ~ "Low advantage",
+      mom_hs == 0 & mom_work > 2 ~ "Mixed advantage",
+      mom_hs == 1 & mom_work <= 2 ~ "Mixed advantage", 
+      mom_hs == 1 & mom_work > 2 ~ "High advantage"
+    ),
+    # Create IQ terciles for grouping
+    iq_group = case_when(
+      mom_iq <= quantile(mom_iq, 0.33, na.rm = TRUE) ~ "Lower IQ",
+      mom_iq <= quantile(mom_iq, 0.67, na.rm = TRUE) ~ "Middle IQ",
+      TRUE ~ "Higher IQ"
+    ),
+    # Create schooling lables
+    mom_school = case_when(
+      mom_hs == 0 ~ "Not Completed High School",
+      mom_hs == 1 ~ "Completed High School"
+    )
+  )
+# Turning iq_group into a factor so they are ordered correctly when creating the
+# visualisation
+kidiq$iq_group = factor(kidiq$iq_group, levels = c("Lower IQ", "Middle IQ", "Higher IQ"))
+
+```
+
+### Organising data to create visualisations
+- Organising mother's IQ and child test score, which are continuous variables, into broad ordinal categories.
+- Combining mother's IQ and child test score to identify "surprising cases", where there is a large disparity between mother's IQ and child attainment in test score.
+
+```{r, echo=TRUE}
+
+# Create categories for the analysis
+
+kidiq <- kidiq %>%
+  mutate(
+    # Create ability categories
+    ability_level = case_when(
+      mom_iq <= quantile(mom_iq, 0.25, na.rm = TRUE) ~ "Low ability",
+      mom_iq <= quantile(mom_iq, 0.75, na.rm = TRUE) ~ "Medium ability",
+      TRUE ~ "High ability"
+    ),
+    # Create outcome categories  
+    outcome_level = case_when(
+      kid_score <= quantile(kid_score, 0.25, na.rm = TRUE) ~ "Low outcome",
+      kid_score <= quantile(kid_score, 0.75, na.rm = TRUE) ~ "Medium outcome",
+      TRUE ~ "High outcome"
+    ),
+    # Identify "surprising" cases
+    surprising_case = case_when(
+      ability_level == "High ability" & outcome_level == "Low outcome" ~ "High ability, low outcome",
+      ability_level == "Low ability" & outcome_level == "High outcome" ~ "Low ability, high outcome",
+      TRUE ~ "Expected pattern"
+    ),
+    
+    # Create groups for age of mother
+    age_group = case_when(
+      mom_age <= 16 ~ "16 or under",
+      mom_age >= 17 & mom_age <= 19 ~ "17-19",
+      mom_age >= 20 & mom_age <= 22 ~ "20-22",
+      mom_age >= 23 & mom_age <= 25 ~ "23-25",
+      mom_age >= 26 & mom_age <= 28 ~ "26-28",
+      mom_age >= 29 ~ "29 or over",
+    )
+  )
+
+```
+
+# Data Visaulisations
+
+### Mean Turnout by Country in the 2024 UK General Election
+```{r, include=FALSE}
+uk_csv <- "https://electionresults.parliament.uk/general-elections/6/candidacies.csv"
+uk_raw <- readr::read_csv(uk_csv, show_col_types = FALSE)
+names(uk_raw) <- names(uk_raw) %>% tolower() %>% str_replace_all("\\s+", "_")
+
+uk1 <- uk_raw %>%
+  filter(!`election_is_by-election`)
+
+uk2 <- uk1 %>%
+  select(
+    constituency = constituency_name,
+    country      = country_name,
+    valid_votes  = candidate_vote_count,
+    electorate   = electorate
+  )
+
+uk3 <- uk2 %>%
+  group_by(country, constituency) %>%
+  summarise(
+    valid_votes = sum(valid_votes, na.rm = TRUE),
+    electorate  = max(electorate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+uk <- uk3 %>%
+  mutate(turnout_registered = 100 * valid_votes / electorate) %>%
+  filter(is.finite(turnout_registered), electorate > 0)
+
+turnout_by_country <- uk %>%
+  group_by(country) %>%
+  summarise(
+    mean_turnout   = mean(turnout_registered, na.rm = TRUE),
+    median_turnout = median(turnout_registered, na.rm = TRUE),
+    n              = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(mean_turnout))
+```
+```{r}
+ukpalette <- c("Wales" = '#295C17', "Northern Ireland" = '#7F5491',"Scotland" = '#3759aa',"England" = '#af2931')
+ggplot(turnout_by_country, aes(x = reorder(country, mean_turnout), y = mean_turnout, fill = country)) +
+  geom_col(width = 0.7) +  # bar = mean turnout
+  scale_y_continuous(limits = c(0, 100),
+                     expand = expansion(mult = c(0, 0.05))) + 
+  scale_fill_manual(values = ukpalette) +
+  coord_cartesian(ylim = c(50, 60)) +
+  labs(
+    x = "Country",
+    y = "Turnout (% of registered voters)"
+  ) +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+### Distribution of Constituencies by Level of Turnout
+Most constituencies fall in the "High" turnout category.
+
+```{r, include=FALSE}
+turnout_categories <- uk %>%
+  mutate(
+    category = case_when(
+      turnout_registered < 55 ~ "Low",
+      turnout_registered < 65 ~ "Medium",
+      turnout_registered < 75 ~ "High",
+      TRUE ~ "Very High"
+    ),
+    # Make it a factor so it plots in order
+    category = factor(category, 
+                     levels = c("Low", "Medium", "High", "Very High"))
+  )
+
+# Count by category
+category_counts <- turnout_categories %>%
+  group_by(category, country) %>%
+  summarise(count = n(), .groups = "drop")
+```
+```{r}
+ggplot(category_counts, aes(x = category, y = count, fill = country)) +
+  geom_col(position = "dodge") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    x = "Turnout Category",
+    y = "Number of Constituencies",
+    fill = "Country"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "bottom")
+```
+
+### Impact of Mothers' Age, Education, and Work Status on Child Test Score
+#### Structural Factors Generally Stand
+They remain the best predictor of child test score outcomes, though there are some surprising cases.
+
+```{r}
+p2palette <- c("Expected pattern" = "#555555","High ability, low outcome" = "#ff4040","Low ability, high outcome" = "#009b77")
+your_plot_2 <- kidiq %>%
+  # Add your data manipulation here
+  ggplot(aes(x = mom_iq, y = kid_score, colour = surprising_case, shape = age_group)) +
+  # Add your geoms and aesthetics here
+    geom_jitter(alpha = 0.8) +
+    labs(
+      x = "Mother's IQ (proxy for 'ability')",
+      y = "Child's Test Score",
+      caption = "Data: Children's test scores and mother's characteristics",
+      shape = "Age Group of Mother",
+      colour = "Surprising Cases"
+    ) +
+    scale_colour_manual(values = p2palette) +
+    scale_shape_discrete() +
+    facet_grid(mom_school ~ factor(work_status, levels = c("Full-time+", "Full-time", "Part-time", "Not working"))) +
+    theme_grey() +
+    theme(
+     axis.text.x = element_text(size = 6),
+     legend.text = element_text(size = 5),
+     legend.title = element_text(size = 6),
+     strip.text.y = element_text(size = 8)
+     )
+
+# Uncomment to view your plot
+print(your_plot_2)
+```
+
+# Data Sources
+- National Longitudinal Survey of Youth, Kidiq Dataset
+- Parliament Election Results, 2024 UK General Election candidate-level data Available at: https://electionresults.parliament.uk/general-elections/6
