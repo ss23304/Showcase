@@ -10,6 +10,8 @@ navbar:
       href: index.html
     - text: "About"
       href: about.html
-    - text: "GV300 Showcase"              
-      href: GV300-showcase.html 
+    - text: "Data Analysis & Visualisation"              
+      href: Data-Analysis---Visualisation.html
+    - text: "Text Analysis"
+      href: Text-Analysis.html
 output: distill::distill_article
