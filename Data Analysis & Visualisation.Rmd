@@ -1,7 +1,7 @@
 ---
 title: "Data Analysis & Visualisation"
 description: |
-  This page is a showcase of work completed for the GV300 Advanced Quantitative Political Analysis module.
+  This page is a showcase of data analysis work completed for the GV300 Advanced Quantitative Political Analysis module.
 output: distill::distill_article
 ---
 ```{r setup, include=FALSE}
